@@ -1,10 +1,22 @@
 # Grin Logger
 
-A python container designed to log data from a Grin Phaserunner, Cycle Analyst, and a GPS unit.
+A python container designed to log data from a Grin Phaserunner (PR), Cycle Analyst (CA), and a GPS unit.
+
+## What It Does
+
+Based on a RaspberryPi, some TTL/USB cables and a GPS antenna, this will log data from the PR, CA, and GPS as one whole CSV formatted file. This file can be imported and manipulated however you want, but it is intended as a direct input to Telemetry Overlay software. As currently built, it tracks these fields:
+
+```
+date,lat (deg),lon (deg),alt (m),
+Amp Hours (ah),Voltage (V),Amps (A),Speed (km/h),Distance (km),Temp (°C),Cadence (rpm),Human Watts (W),Human Power (NM),Throttle In (V),Throttle Out (V),AuxA,AuxB,Flags (text),
+Faults (text),Controller Temperature (°C),Vehicle Speed (km/h),Motor Temperature (°C),Motor Current (A),Motor RPM (RPM),Motor Speed (%),Battery Voltage (V),Battery Current (A),Battery State of Charge (%),Battery Power (W),Last Fault (text),Throttle Voltage (V),Brake 1 Voltage (V),Brake 2 Voltage (V),Phase A Current (A),Phase B Current (A),Phase C Current (A),Phase A Voltage (V),Phase B Voltage (V),Phase C Voltage (V),Wheel Speed Sensor Based (RPM),Wheel Speed Motor Based (RPM),Measured Wheel Speed (RPM)
+```
+
+The first four are GPS, the next 14 are from the CA, and the remainder are from the PR.
 
 ## Setup
 
-I am running a RaspberryPi 4 Model B; useful as it has 4 fullsized USB ports. I have the two TTL-to-USB cords from Grin -- one to the Phaserunner (PR) the other to the CycleAnalyst (CA). The GPS and a wifi take up the other two USB ports.
+I am running a RaspberryPi 4 Model B; useful as it has 4 fullsized USB ports. I have the two TTL-to-USB cords from Grin -- one to the PR the other to the CA. The GPS and a wifi take up the other two USB ports.
 
 The install on the rPi is a standard Raspian install. After that, I also installed Docker in order to keep the python app contained.
 
