@@ -5,50 +5,29 @@ import time
 import serial
 import pynmea2
 import csv
+
 from stats import prstats
-from datetime import datetime, timezone
-# from pynmea2 import nmea_utils
+from datetime import datetime
 
 
-# get the PR up and running
-print("Connecting to PR...")
-while True:
-    try:
-        instrument = minimalmodbus.Instrument('/dev/tty-pr', 1)
-        instrument.serial.baudrate = 115200
-        print("...connected")
-        break
-    except:
-        print("...retrying")
-        time.sleep(1)
+pr_serial = serial.Serial(None, baudrate=115200, timeout=0.5)
+ca_serial = serial.Serial(None, baudrate=9600, timeout=0.5)
+gps_serial = serial.Serial(None, baudrate=9600, timeout=0.5)
 
-# start listening to the CA
-print("Connecting to CA...")
-while True:
-    try:
-        ca_serial = serial.Serial('/dev/tty-ca', 9600, timeout=0.5)
-        print("...connected")
-        break
-    except:
-        print("...retrying")
-        time.sleep(1)
+pr_serial.port = '/dev/tty-pr'
+ca_serial.port = '/dev/tty-ca'
+gps_serial.port = '/dev/ttyACM0'
 
-# start listening to the GPS
-print("Connecting to GPS...")
-while True:
-    try:
-        # TODO: GPS setup, satellite acquisition
-        #gps_serial = serial.Serial('/dev/SOMETHING', baudrate=9600, timeout=0.5)
-        print("...connected")
-        break
-    except:
-        print("...retrying")
-        time.sleep(1)
+# the minimalmodbus will not start with a closed serial, so we leave it as none for now
+instrument = None
+csvwriter = None
 
 
 # The data is intended to be imported into Telemetry Overlay, here are some manual excerpts
 # about how they handle generic CSV files for telemetry data:
 #
+# --------------------------------------------------------------------------------------------------------
+# https://goprotelemetryextractor.com/docs/telemetry-overlay-manual.pdf
 # --------------------------------------------------------------------------------------------------------
 # CSV files from Telemetry Extractor v2.0 and newer are also well supported. CSV files from previous
 # versions of Telemetry Extractor may need manual tweaking.
@@ -72,6 +51,11 @@ while True:
 # + Flow: LPH, GPH, lb/min
 # + Volume: L, dL, cL, mL, hL, gal, cm³, cc
 # + Text: text
+#
+# Some GPS quality columns are also supported for dynamically filtering out bad GPS data:
+# "satellites" (nubmer of gps satellites),
+# "gps dop" (dillution of precision),
+# "gps fix" (type of GPS fix: a number from 0 to 3)
 # --------------------------------------------------------------------------------------------------------
 #
 # As such, you will find that I've "relabeled" several of the stats for the CA, PR, and GPS to match the
@@ -79,10 +63,9 @@ while True:
 # in case they do get supported at some point
 
 # gps headers
-gps_headers = ["date", "lat (deg)", "lon (deg)", "alt (m)"]
+gps_headers = ["date", "lat (deg)", "lon (deg)", "alt (m)", "satellites", "gps dop", "gps fix"]
 
-# headers
-# TODO: is RPM human pedal cadence, or wheel rpm? Probably human...
+# CA headers
 ca_headers = ["Amp Hours (ah)", "Voltage (V)", "Amps (A)", "Speed (km/h)", "Distance (km)", "Temp (°C)",
               "Cadence (rpm)", "Human Watts (W)", "Human Power (NM)", "Throttle In (V)", "Throttle Out (V)",
               "AuxA", "AuxB", "Flags (text)"]
@@ -94,104 +77,161 @@ pr_headers = [item.get('name') for item in prstats]
 # one big header
 headers = gps_headers + ca_headers + pr_headers
 
-# start the log file
-# TODO: when not wifi connected; need to determine filename based on something else.
-#       Maybe we wait until there is a GPS lock and we can extract date/time from GPS?
-log_file_name = '/app/logs/' + str(int(datetime.now().timestamp())) + '.csv'
-print(f'Starting CSV log file ({log_file_name})')
-csvfile = open(log_file_name, 'w', newline='')
-csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-csvwriter.writerow(headers)
-csvfile.flush()
-
 while True:
 
-    # reset our stats holder each time
-    compiled_stats = []
+    try:
+        # The way GPS works is that it spits out a stream of NMEA messages. Each line has a prefix and then
+        # specifically formatted data for that message type. We're interested in a few data types to get all
+        # the details we need; namely:
+        # - GGA
+        # - RMC
+        # The first message contains the majority of the lat/lon/etc data we want, meanwhile
+        # the RMC message critically contains the DATE object. We need this since we can't rely
+        # on the rPi since it doesn't have an RTC with battery backup. Thus, when not connected
+        # to your wifi (ie, out on a ride) you have no idea what the date/time is.
+        #
+        # With that in mind, this means we need to read multiple lines from the GPS serial connection
+        # till we find at least one of each of the messages above so we can cobble together the full
+        # timestamp (UTC based, ISO 8601 format)
 
-    # TODO: TEST Gather the GPS coordinates
-    # The way GPS works is that it spits out a stream of NMEA data. Each line has a prefix and then
-    # specifically formatted data for that message type. We're going to end up interested in a few
-    # data types to get all the details we need; namely:
-    # - GGA
-    # - RMC
-    # The first message contains the majority of the lat/lon/etc data we want, meanwhile
-    # the RMC message critically contains the DATE object. We need this since we can't rely
-    # on the rPi since it doesn't have an RTC with battery backup. Thus, when not connected
-    # to your wifi (ie, out on a ride) you have no idea what the date/time is.
-    #
-    # With that in mind, this means we need to read multiple lines from the GPS serial connection
-    # till we find at least one of each of the messages above so we can cobble together the full
-    # timestamp (UTC based, ISO 8601 format)
-    # ts, lat, lon, alt
-    gps_data = [None, None, None, None]
-    attempts = 0
+        # preset the stats as nones so we can test "if all are no long None, we're good!"
+        # also setup attempts so we don't spin our wheels here forever if the message queue gets wonky
+        gps_stats = [None] * len(gps_headers)
+        attempts = 0
 
-    # # clear the buffer so we read the most recent data
-    # gps_serial.reset_input_buffer()
-    # while True:
-    #     # if we've got all the data, cut out
-    #     if any(x is None for x in gps_data) or attempts >= 10:
-    #         break
-    #     attempts += 1
-    #
-    #     sentence = gps_serial.readline().decode('utf-8')
-    #     key = sentence[1:6]
-    #     data = pynmea2.parse(sentence)
-    #
-    #     if hasattr(data, "datestamp") and hasattr(data, "timestamp"):
-    #         # convert the funky NMEA date and time into a standard ISO variant
-    #         py_date = datetime.combine(pynmea2.datestamp(data.datestamp), pynmea2.timestamp(data.timestamp))
-    #         gps_data[0] = py_date.isoformat() + "Z"
-    #     if hasattr(data, "latitude"):
-    #         gps_data[1] = data.latitude
-    #     if hasattr(data, "longitude"):
-    #         gps_data[2] = data.longitude
-    #     if hasattr(data, "altitude"):
-    #         gps_data[3] = data.altitude
+        # open the serial port if it's been lost/failed
+        if not gps_serial.is_open:
+            gps_serial.open()
 
-    # Fake
-    gps_data = [int(datetime.now().timestamp()*1000), 1, 2, 15]
-    compiled_stats += gps_data
+        # clear the buffer so we read the most recent data
+        gps_serial.reset_input_buffer()
 
-    # Each time we loop; clear the CA buffer and fetch the next full line; this way we have the latest data.
-    # To "clean up" the data, we decode it from the raw data, strip off any whitespace,
-    # and then split it by the (\t) tabs
-    ca_serial.reset_input_buffer()
-    # throw away one line; likely incomplete
-    ca_serial.readline()
-    # use the next one
-    ca_stats = ca_serial.readline().decode().strip().split("\t")
+        # loop read messages till we've fetched all our data
+        while True:
+            # if we've got all the data, break the line reading loop
+            if not any(x is None for x in gps_stats):
+                break
 
-    if len(ca_stats) != len(ca_headers):
-        # TODO: throw some kind of error?
-        #       these *should* be the same length, since we don't have a way of knowing
-        #       what data the CA is spitting out unless it matches out expected count
-        print("ca stats wrong", len(ca_stats), len(ca_headers))
+            # also bust out if we've tried too many times, emptying the collected data
+            if attempts >= 10:
+                gps_stats = [None] * len(gps_headers)
+                break
+
+            # increment the attempt counter
+            attempts += 1
+
+            # get some DATA
+            line = gps_serial.readline().decode('utf-8')
+
+            # skip empty lines; usually happens after reset
+            if line == '':
+                continue
+
+            # parse the line
+            msg = pynmea2.parse(line)
+
+            # skip any message which is not a GGA/RMC since we only need those two types
+            if type(msg) not in [pynmea2.GGA, pynmea2.RMC]:
+                # print("skipped message (" + msg.__class__.__name__ + ") we don't need")
+                continue
+
+            # print(repr(msg))
+
+            # collect whatever data we can from the messages
+            # yes, RMC and GGA both have lat/long; we can take the values from either, they'll be the same
+            # it's just different message types from years of caked on different vendor requirements
+            # each message type has a bit of the data we need, so we seek both.
+            # todo: the indexing by int here is...a brittle solution
+            if hasattr(msg, "datestamp") and hasattr(msg, "timestamp"):
+                py_date = datetime.combine(msg.datestamp, msg.timestamp)
+                gps_stats[0] = py_date.isoformat().replace('+00:00', 'Z')
+            if hasattr(msg, "latitude"):
+                gps_stats[1] = round(msg.latitude, 6)
+            if hasattr(msg, "longitude"):
+                gps_stats[2] = round(msg.longitude, 6)
+            if hasattr(msg, "altitude"):
+                gps_stats[3] = msg.altitude
+            if hasattr(msg, "num_sats"):
+                gps_stats[4] = msg.num_sats
+            if hasattr(msg, "horizontal_dil"):
+                gps_stats[5] = msg.horizontal_dil
+            if hasattr(msg, "gps_qual"):
+                gps_stats[6] = msg.gps_qual
+
+    except Exception as e:
+        print('gps data failed: ', e)
+        gps_stats = [None] * len(gps_headers)
+        gps_serial.close()
+
+    try:
+        # open the serial port if it's been lost/failed
+        if not ca_serial.is_open:
+            ca_serial.open()
+        # Each time we loop; clear the CA buffer and fetch the next full line; this way we have the latest data.
+        ca_serial.reset_input_buffer()
+        # throw away one line; likely incomplete, read a line and toss it using the next one
+        ca_serial.readline()
+        # To "clean up" the data, we decode it from the raw data, strip off any whitespace,
+        # and then split it by the (\t) tabs
+        ca_stats = ca_serial.readline().decode().strip().split("\t")
+
+        if len(ca_stats) != len(ca_headers):
+            raise Exception(f"ca stat lengths don't match headers {len(ca_stats)} != {len(ca_headers)}")
+
+    except Exception as e:
+        print('ca stats failed: ', e)
         ca_stats = [None] * len(ca_headers)
+        ca_serial.close()
 
-    compiled_stats += ca_stats
+    try:
+        # set up the instrument
+        if instrument is None:
+            pr_serial.open()
+            instrument = minimalmodbus.Instrument(pr_serial, 1)
 
-    # gather all the PR stats
-    # note: this one doesn't need to "clear" any buffers because it's a call/response system instead
-    for stat in prstats:
-        val = instrument.read_register(stat.get('address'), 0, signed=stat.get('isSigned', False))
-        # there are two "types" of stats: plain integer like values, some of which are "scaled" by a factor
-        if stat.get('type') == "independent":
-            scale = stat.get('scale', 0)
-            if scale:
-                val = val / scale
-        # And an int which is actually a bitmap of true/false values
-        # I'm not decoding these currently; since that would balloon the CSV rows quite a bit
-        # and, aside from debugging purposes, I'm not convinced of their value
-        else:
-            val = format(val, "016b")
+        # open the serial port if it's been lost/failed
+        if not instrument.serial.is_open:
+            instrument.serial.open()
 
-        # jam it all into the row data
-        compiled_stats.append(val)
+        # gather all the PR stats
+        # note: this one doesn't need to "clear" any buffers because it's a call/response system instead
+        pr_stats = []
+        for stat in prstats:
+            val = instrument.read_register(stat.get('address'), 0, signed=stat.get('isSigned', False))
+            # there are two "types" of stats: plain integer like values, some of which are "scaled" by a factor
+            if stat.get('type') == "independent":
+                scale = stat.get('scale', 0)
+                if scale:
+                    val = val / scale
+            # And an int which is actually a bitmap of true/false values
+            # I'm not decoding these currently; since that would balloon the CSV rows quite a bit
+            # and, aside from debugging purposes, I'm not convinced of their value
+            else:
+                val = format(val, "016b")
 
-    # Format all the data into one cohesive format and save it
-    print(compiled_stats)
+            # jam it all into the row data
+            pr_stats.append(val)
+    except Exception as e:
+        print("pr stats failed: ", e)
+        pr_stats = [None] * len(pr_headers)
+        instrument.serial.close()
+
+    # start the csvwriter if we have a date to use
+    if csvwriter is None:
+        if gps_stats[0] is None:
+            print("No date yet, can't start log file")
+            continue
+
+        current_date = datetime.fromisoformat(gps_stats[0])
+        filename_id = int(current_date.timestamp())
+        log_file_name = f'/app/logs/{filename_id}.csv'
+
+        print(f'Starting CSV log file ({log_file_name})')
+        csvfile = open(log_file_name, 'w', newline='')
+        csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        csvwriter.writerow(headers)
+
+    compiled_stats = gps_stats + ca_stats + pr_stats
 
     # send it out to the csvfile and flush it to disk
     csvwriter.writerow(compiled_stats)
@@ -199,4 +239,4 @@ while True:
 
     # time.sleep() is basic, could probably be a bit more advanced here (by, like, trying to hit N records, per second
     # and accounting for the sleep time calculated by how long it's been since last...but....whatever :D)
-    time.sleep(0.050)
+    time.sleep(0.001)
