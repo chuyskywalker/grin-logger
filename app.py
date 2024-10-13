@@ -14,8 +14,8 @@ pr_serial = serial.Serial(None, baudrate=115200, timeout=0.5)
 ca_serial = serial.Serial(None, baudrate=9600, timeout=0.5)
 gps_serial = serial.Serial(None, baudrate=9600, timeout=0.5)
 
-pr_serial.port = '/dev/tty-pr'
-ca_serial.port = '/dev/tty-ca'
+pr_serial.port = '/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01LIUZ-if00-port0'
+ca_serial.port = '/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01KYGI-if00-port0'
 gps_serial.port = '/dev/ttyACM0'
 
 # the minimalmodbus will not start with a closed serial, so we leave it as none for now
@@ -214,7 +214,8 @@ while True:
     except Exception as e:
         print("pr stats failed: ", e)
         pr_stats = [None] * len(pr_headers)
-        instrument.serial.close()
+        if instrument is not None:
+            instrument.serial.close()
 
     # start the csvwriter if we have a date to use
     if csvwriter is None:
@@ -232,6 +233,7 @@ while True:
         csvwriter.writerow(headers)
 
     compiled_stats = gps_stats + ca_stats + pr_stats
+    # print(compiled_stats)
 
     # send it out to the csvfile and flush it to disk
     csvwriter.writerow(compiled_stats)
