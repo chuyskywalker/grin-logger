@@ -16,19 +16,11 @@ That's GPS, followed by CA, and the remainder are from the PR.
 
 ## Setup
 
-I am running a RaspberryPi 4 Model B; useful as it has 4 fullsized USB ports. I have the two TTL-to-USB cords from Grin -- one to the PR the other to the CA. The GPS and a wifi take up the other two USB ports.
+I am running a RaspberryPi 4 Model B; useful as it has 4 fullsized USB ports. I have the two TTL-to-USB cords from Grin -- one to the PR the other to the CA. The GPS takes up a third port and I'm using onboard wifi to connect to my local network when in range.
 
-The install on the rPi is a standard Raspian install. After that, I also installed Docker in order to keep the python app contained.
+The OS on the rPi is a standard Raspian install. After that, I also installed Docker in order to keep the python app contained.
 
-The app relies on a few synmlinked TTY `/dev/` ports. Plug in the PR, look under `/dev/serial/by-id/` for the new entry and add a symlink for it such as:
-
-```bash
-ln -s /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01KYGI-if00-port0 /dev/tty-pr
-```
-
-Then plug in the CA and do the same, but for `/dev/tty-ca`.
-
-_(todo: instructions for GPS)_
+When you grab the code you will need to edit the locations for the PR and CA ttl cables. I've found they are uniquely labeled and easy to reference from the `/dev/serial/by-id/` entries. Plug them in one-at-a-time and it's easy to grab their ID's. (Apparently, you could auto-map these to something nicer like `/dev/tty-pc` if you took the time to figure out udev or something. I haven't bothered.) At some point, I'll probably allow for the values to be passed into the container as ENV properties, but for now they are just hardcoded.
 
 To run the app interactively:
 
@@ -43,7 +35,7 @@ docker run -ti --rm --privileged \
 
 You likely need to change `/share/app` to where you've placed these application files on the host. You should also create a `logs` directory in the same location.
 
-> **WARNING** This runs in privledged mode to skirt around USB mounting/unmounting issues and maps the entire `/dev` into the container. Since this is really the only thing designed to run on the machine, though, hassling with the other work arounds wasn't worth the head ache.
+> **WARNING** This runs in privledged mode to skirt around USB mounting/unmounting issues and maps the entire `/dev` into the container. Since this is really the only thing designed to run on the machine, though, hassling with the other workarounds wasn't worth the headache.
 
 One running, you should see a log file generated under `logs` -- you can tail this or do a fancy watch command like this:
 
@@ -69,6 +61,8 @@ docker logs -f bikelogger
 ```
 
 ----
+
+This was [stream-of-post developed over at the EndlessSphere forums](https://endless-sphere.com/sphere/threads/trip-data-logging-phaserunner-ca-gps.125645/).
 
 [^1]: Note: If you use the Raspberry Pi 4, there is a "bug" in so much that if the USB ports have any back-fed power, the pi will not boot. Since the PR backfeeds on the TRRS cable a 5v intended to power a down stream device, this can potentially stop your pi logger from starting up and recording. As such, you will need to purchase a ["power stopper"](https://www.amazon.com/dp/B094G4P3P4) to disconnect the 5v coming from the PR. 
 
