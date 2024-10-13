@@ -52,3 +52,18 @@ watch -n1 -x bash -c "paste <(head -n 1 1728684428.csv | tr ',' '\n' | tr -d '\r
 ```
 
 Which formats it into a display like output.
+
+To make a version that runs as soon as the computer boots up and just starts logging, then you run this:
+
+```bash
+docker run --restart=always --detach --privileged --name bikelogger \
+  -v /share/app:/app -v /dev:/dev -w /app \
+  bikelogger \
+  python -u app.py
+```
+
+You can watch logs from the process like this:
+
+```bash
+docker logs -f bikelogger
+```
