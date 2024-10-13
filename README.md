@@ -4,7 +4,7 @@ A python container designed to log data from a Grin Phaserunner (PR), Cycle Anal
 
 ## What It Does
 
-Based on a RaspberryPi, some TTL/USB cables and a GPS antenna, this will log data from the PR, CA, and GPS as one whole CSV formatted file. This file can be imported and manipulated however you want, but it is intended as a direct input to Telemetry Overlay software. As currently built, it tracks these fields:
+Based on a [RaspberryPi][pi][^1], some [TTL/USB cables][ttlusb] and [a GPS antenna][gps], this will log data from the PR, CA, and GPS as one whole CSV formatted file. This file can be imported and manipulated however you want, but it is intended as a direct input to Telemetry Overlay software. As currently built, it tracks these fields:
 
 ```
 date,lat (deg),lon (deg),alt (m),
@@ -67,3 +67,11 @@ You can watch logs from the process like this:
 ```bash
 docker logs -f bikelogger
 ```
+
+----
+
+[^1]: Note: If you use the Raspberry Pi 4, there is a "bug" in so much that if the USB ports have any back-fed power, the pi will not boot. Since the PR backfeeds on the TRRS cable a 5v intended to power a down stream device, this can potentially stop your pi logger from starting up and recording. As such, you will need to purchase a ["power stopper"](https://www.amazon.com/dp/B094G4P3P4) to disconnect the 5v coming from the PR. 
+
+[pi]: https://www.amazon.com/dp/B07TC2BK1X
+[gps]: https://www.amazon.com/dp/B01EROIUEW
+[ttlusb]: https://ebikes.ca/ttl-usb-cable.html
