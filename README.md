@@ -22,7 +22,7 @@ The OS on the rPi is a standard Raspian install. After that, I also installed Do
 
 When you grab the code you will need to edit the locations for the PR and CA ttl cables. I've found they are uniquely labeled and easy to reference from the `/dev/serial/by-id/` entries. Plug them in one-at-a-time and it's easy to grab their ID's. (Apparently, you could auto-map these to something nicer like `/dev/tty-pc` if you took the time to figure out udev or something. I haven't bothered.) At some point, I'll probably allow for the values to be passed into the container as ENV properties, but for now they are just hardcoded.
 
-I do recommend removing `timesyncd` so the script can use the GPS date to set the clock on the machine afterboot.
+I do recommend removing `timesyncd` so the script can use the GPS date to set the clock on the machine after boot.
 
 ```bash
 apt-get remove systemd-timesyncd
@@ -43,7 +43,7 @@ docker run -ti --rm --privileged \
 
 You likely need to change `/share/app` to where you've placed these application files on the host. You should also create a `logs` directory in the same location.
 
-> **WARNING** This runs in privledged mode to skirt around USB mounting/unmounting issues and maps the entire `/dev` into the container. Since this is really the only thing designed to run on the machine, though, hassling with the other workarounds wasn't worth the headache.
+> **WARNING** This runs in privileged mode to skirt around USB mounting/unmounting issues and maps the entire `/dev` into the container. Since this is really the only thing designed to run on the machine, though, hassling with the other workarounds wasn't worth the headache.
 
 One running, you should see a log file generated under `logs` -- you can tail this or do a fancy watch command like this:
 
@@ -66,6 +66,17 @@ You can watch logs from the process like this:
 
 ```bash
 docker logs -f bikelogger
+```
+
+If you need to set your ports and don't want to edit the file, you can use ENV overrides:
+
+```bash
+docker run ... \
+  -e 'pr_serial=/dev/tty/...' \
+  -e 'ca_serial=/dev/tty/...' \
+  -e 'gps_serial=/dev/tty/...' \
+  -e 'speed_units=mp/h' \
+  ...
 ```
 
 ----
