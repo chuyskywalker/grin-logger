@@ -23,15 +23,6 @@ prstats = [
         "description": "Motor peak current ",
         "round": 2
     },
-    {
-        "name": "Motor RPM (RPM)",
-        "address": 263,
-        "scale": 1,
-        "isSigned": True,
-        "type": "independent",
-        "description": "Motor speed "
-    },
-
     # The CA does NOT report this, and I think it's nice to have (even if it's just VxA)
     {
         "name": "Battery Power (W)",
@@ -40,6 +31,38 @@ prstats = [
         "isSigned": True,
         "type": "independent",
         "description": "Calculated battery output power"
+    },
+    {
+        "name": "Motor RPM (RPM)",
+        "address": 263,
+        "scale": 1,
+        "isSigned": True,
+        "type": "independent",
+        "description": "Motor speed "
+    },
+    {
+        "name": "Throttle Voltage (V)",
+        "address": 270,
+        "scale": 4096,
+        "type": "independent",
+        "description": "Filtered throttle voltage",
+        "round": 2
+    },
+    {
+        "name": "Brake 1 Voltage (V)",
+        "address": 271,
+        "scale": 4096,
+        "type": "independent",
+        "description": "Filtered brake 1 voltage",
+        "round": 2
+    },
+    {
+        "name": "Brake 2 Voltage (V)",
+        "address": 272,
+        "scale": 4096,
+        "type": "independent",
+        "description": "Filtered brake 2 voltage",
+        "round": 2
     },
 
     {
@@ -92,30 +115,6 @@ prstats = [
         },
         "type": "bit vector",
         "description": "15 14 13 12 11 10  9  8  7  6  5  4  3  2  1  0\n\n1=active 0=not active\n\nbit  0: Controller over voltage (flash code 1,1)\nbit  1: Phase over current (flash code 1,2)\nbit  2: Current sensor calibration (flash code 1,3)\nbit  3: Current sensor over current (flash code 1,4)\nbit  4: Controller over temperature (flash code 1,5)\nbit  5: Motor Hall sensor fault (flash code 1,6)\nbit  6: Controller under voltage (flash code 1,7)\nbit  7: POST static gating test (flash code 1,8)\nbit  8: Network communication timeout (flash code 2,1)\nbit  9: Instantaneous phase over current (flash code 2,2)\nbit 10: Motor over temperature (flash code 2,3)\nbit 11: Throttle voltage outside range (flash code 2,4)\nbit 12: Instantaneous controller over voltage (flash code 2,5)\nbit 13: Internal error (flash code 2,6)\nbit 14: POST dynamic gating test (flash code 2,7)\nbit 15: Instantaneous under voltage (flash code 2,8)"
-    },
-    {
-        "name": "Throttle Voltage (V)",
-        "address": 270,
-        "scale": 4096,
-        "type": "independent",
-        "description": "Filtered throttle voltage",
-        "round": 2
-    },
-    {
-        "name": "Brake 1 Voltage (V)",
-        "address": 271,
-        "scale": 4096,
-        "type": "independent",
-        "description": "Filtered brake 1 voltage",
-        "round": 2
-    },
-    {
-        "name": "Brake 2 Voltage (V)",
-        "address": 272,
-        "scale": 4096,
-        "type": "independent",
-        "description": "Filtered brake 2 voltage",
-        "round": 2
     },
 
     ## This relies on the wheel diameter being set, and accurate, in the PR suite
