@@ -5,9 +5,10 @@ import time
 import serial
 import pynmea2
 import csv
+import os
 
 from stats import prstats
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 pr_serial = serial.Serial(None, baudrate=115200, timeout=0.5)
@@ -63,7 +64,7 @@ csvwriter = None
 # in case they do get supported at some point
 
 # gps headers
-gps_headers = ["date", "lat (deg)", "lon (deg)", "alt (m)", "satellites", "gps dop", "gps fix"]
+gps_headers = ["lat (deg)", "lon (deg)", "alt (m)", "satellites", "gps dop", "gps fix"]
 
 # CA headers
 ca_headers = ["Amp Hours (ah)", "Voltage (V)", "Amps (A)", "Speed (km/h)", "Distance (km)", "Temp (°C)",
@@ -75,7 +76,10 @@ ca_headers = ["Amp Hours (ah)", "Voltage (V)", "Amps (A)", "Speed (km/h)", "Dist
 pr_headers = [item.get('name') for item in prstats]
 
 # one big header
-headers = gps_headers + ca_headers + pr_headers
+headers = ["date"] + gps_headers + ca_headers + pr_headers
+
+# time set
+time_set = False
 
 while True:
 
@@ -142,21 +146,28 @@ while True:
             # it's just different message types from years of caked on different vendor requirements
             # each message type has a bit of the data we need, so we seek both.
             # todo: the indexing by int here is...a brittle solution
+
+            # if we have the date/time, use that to sync the system to current
             if hasattr(msg, "datestamp") and hasattr(msg, "timestamp"):
                 py_date = datetime.combine(msg.datestamp, msg.timestamp)
-                gps_stats[0] = py_date.isoformat().replace('+00:00', 'Z')
+                ts = py_date.isoformat().replace('+00:00', 'Z')
+
+                if not time_set:
+                    os.system(f'date -u -s"{ts}"')
+                    time_set = True
+
             if hasattr(msg, "latitude"):
-                gps_stats[1] = round(msg.latitude, 6)
+                gps_stats[0] = round(msg.latitude, 6)
             if hasattr(msg, "longitude"):
-                gps_stats[2] = round(msg.longitude, 6)
+                gps_stats[1] = round(msg.longitude, 6)
             if hasattr(msg, "altitude"):
-                gps_stats[3] = msg.altitude
+                gps_stats[2] = msg.altitude
             if hasattr(msg, "num_sats"):
-                gps_stats[4] = msg.num_sats
+                gps_stats[3] = msg.num_sats
             if hasattr(msg, "horizontal_dil"):
-                gps_stats[5] = msg.horizontal_dil
+                gps_stats[4] = msg.horizontal_dil
             if hasattr(msg, "gps_qual"):
-                gps_stats[6] = msg.gps_qual
+                gps_stats[5] = msg.gps_qual
 
     except Exception as e:
         print('gps data failed: ', e)
@@ -218,13 +229,14 @@ while True:
             instrument.serial.close()
 
     # start the csvwriter if we have a date to use
+    current_date = datetime.now(timezone.utc)
+
     if csvwriter is None:
-        if gps_stats[0] is None:
+        if not time_set:
             print("No date yet, can't start log file")
             continue
 
-        current_date = datetime.fromisoformat(gps_stats[0])
-        filename_id = int(current_date.timestamp())
+        filename_id = current_date.strftime("%Y_%m_%d_%H_%M_%S")
         log_file_name = f'/app/logs/{filename_id}.csv'
 
         print(f'Starting CSV log file ({log_file_name})')
@@ -232,8 +244,8 @@ while True:
         csvwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         csvwriter.writerow(headers)
 
-    compiled_stats = gps_stats + ca_stats + pr_stats
-    # print(compiled_stats)
+    compiled_stats = [current_date.isoformat().replace('+00:00', 'Z')] + gps_stats + ca_stats + pr_stats
+    print(compiled_stats)
 
     # send it out to the csvfile and flush it to disk
     csvwriter.writerow(compiled_stats)

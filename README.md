@@ -22,6 +22,14 @@ The OS on the rPi is a standard Raspian install. After that, I also installed Do
 
 When you grab the code you will need to edit the locations for the PR and CA ttl cables. I've found they are uniquely labeled and easy to reference from the `/dev/serial/by-id/` entries. Plug them in one-at-a-time and it's easy to grab their ID's. (Apparently, you could auto-map these to something nicer like `/dev/tty-pc` if you took the time to figure out udev or something. I haven't bothered.) At some point, I'll probably allow for the values to be passed into the container as ENV properties, but for now they are just hardcoded.
 
+I do recommend removing `timesyncd` so the script can use the GPS date to set the clock on the machine afterboot.
+
+```bash
+apt-get remove systemd-timesyncd
+```
+
+> _Note: GPS date sync in this naive sense (without PPS) is a bit inaccurate, but we're talking ms (milliseconds)! For the purposes of data logging a bike ride, it's WELL within acceptable drift)_
+
 To run the app interactively:
 
 ```bash
