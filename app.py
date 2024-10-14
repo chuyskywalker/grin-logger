@@ -229,6 +229,8 @@ while True:
                 scale = stat.get('scale', 0)
                 if scale:
                     val = val / scale
+                if stat.get('round', None) is not None:  # could use ('round', False) for a small if, but then round:0 would fail
+                    val = round(val, stat.get('round'))
             # And an int which is actually a bitmap of true/false values
             # I'm not decoding these currently; since that would balloon the CSV rows quite a bit
             # and, aside from debugging purposes, I'm not convinced of their value
