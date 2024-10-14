@@ -18,6 +18,7 @@ gps_serial = serial.Serial(None, baudrate=9600, timeout=0.5)
 pr_serial.port = '/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01LIUZ-if00-port0'
 ca_serial.port = '/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01KYGI-if00-port0'
 gps_serial.port = '/dev/ttyACM0'
+speed_units = 'km/h'
 
 # the minimalmodbus will not start with a closed serial, so we leave it as none for now
 instrument = None
@@ -67,9 +68,21 @@ csvwriter = None
 gps_headers = ["lat (deg)", "lon (deg)", "alt (m)", "satellites", "gps dop", "gps fix"]
 
 # CA headers
-ca_headers = ["Amp Hours (ah)", "Voltage (V)", "Amps (A)", "Speed (km/h)", "Distance (km)", "Temp (°C)",
-              "Cadence (rpm)", "Human Watts (W)", "Human Power (NM)", "Throttle In (V)", "Throttle Out (V)",
-              "AuxA", "AuxB", "Flags (text)"]
+ca_headers = ["Amp Hours (ah)",
+              "Voltage (V)",
+              "Amps (A)",
+              f'Speed ({speed_units})',
+              # "Distance (km)", ## skip!
+              "Temp (°C)",
+              "Cadence (rpm)",
+              "Human Watts (W)",
+              "Human Power (NM)",
+              "Throttle In (V)",
+              "Throttle Out (V)",
+              "AuxA",
+              "AuxB",
+              "Flags (text)"
+              ]
 # 13.869  83.97   0.00    0.00    33.976  22.2    0.0     0       0.0     0.84    1.15    0.00    20.0    1
 
 # pr headers
@@ -185,6 +198,8 @@ while True:
         # To "clean up" the data, we decode it from the raw data, strip off any whitespace,
         # and then split it by the (\t) tabs
         ca_stats = ca_serial.readline().decode().strip().split("\t")
+        ## remove list item 5th item (index 4), "distance traveled"
+        ca_stats.pop(4)
 
         if len(ca_stats) != len(ca_headers):
             raise Exception(f"ca stat lengths don't match headers {len(ca_stats)} != {len(ca_headers)}")
