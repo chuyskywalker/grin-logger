@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from random import randint
 
 import minimalmodbus
 import time
@@ -6,9 +7,36 @@ import serial
 import pynmea2
 import csv
 import os
+import board
+import digitalio
+from PIL import Image, ImageDraw, ImageFont
+import adafruit_ssd1306
 
 from stats import prstats
 from datetime import datetime, timezone
+
+# Define the Reset Pin
+oled_reset = digitalio.DigitalInOut(board.D4)
+
+# Display Parameters
+WIDTH = 128
+HEIGHT = 64
+BORDER = 5
+
+# Use for I2C.
+i2c = board.I2C()
+oled = adafruit_ssd1306.SSD1306_I2C(WIDTH, HEIGHT, i2c, addr=0x3C, reset=oled_reset)
+
+# Create blank image for drawing.
+# Make sure to create image with mode '1' for 1-bit color.
+image = Image.new("1", (oled.width, oled.height))
+
+# Get drawing object to draw on image.
+draw = ImageDraw.Draw(image)
+font = ImageFont.truetype('PixelOperator.ttf', 16)
+
+
+
 
 
 pr_serial = serial.Serial(None, baudrate=115200, timeout=0.5)
@@ -19,6 +47,8 @@ pr_serial.port = os.getenv('pr_serial', '/dev/serial/by-id/usb-FTDI_FT230X_Basic
 ca_serial.port = os.getenv('ca_serial', '/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01KYGI-if00-port0')
 gps_serial.port = os.getenv('gps_serial', '/dev/ttyACM0')
 speed_units = os.getenv('speed_units', 'km/h')
+
+use_oled = os.getenv('oled', '0')
 
 # the minimalmodbus will not start with a closed serial, so we leave it as none for now
 instrument = None
@@ -94,7 +124,29 @@ headers = ["date"] + gps_headers + ca_headers + pr_headers
 # time set
 time_set = False
 
+script_start = datetime.now()
+sat_count = lat = lon = "???"
+gps_state = pr_state = ca_state = 'N'
+
 while True:
+
+    if use_oled == '1':
+        try:
+            duration = datetime.now() - script_start
+            seconds_passed = duration.total_seconds()
+            (minutes, seconds) = divmod(seconds_passed, 60)
+
+            draw.rectangle((0, 0, oled.width, oled.height), outline=0, fill=0)
+            draw.text((0, 0), 'DUR: {:02}:{:02}'.format(int(minutes), int(seconds)), font=font, fill=255)
+            draw.text((0, 16), f'SATS: {sat_count}', font=font, fill=255)
+            draw.text((0, 32), f'GPS: {gps_state}  PR: {pr_state}  CA: {ca_state}', font=font, fill=255)
+            draw.text((0, 48), f'{round(lat, 4)}, {round(lon, 4)}', font=font, fill=255)
+
+            oled.image(image)
+            oled.show()
+
+        except Exception as e:
+            print('could not update screen: ', e)
 
     try:
         # The way GPS works is that it spits out a stream of NMEA messages. Each line has a prefix and then
@@ -127,11 +179,14 @@ while True:
         while True:
             # if we've got all the data, break the line reading loop
             if not any(x is None for x in gps_stats):
+                gps_state = 'Y'
                 break
 
             # also bust out if we've tried too many times, emptying the collected data
-            if attempts >= 10:
+            if attempts >= 25:
                 gps_stats = [None] * len(gps_headers)
+                gps_state = 'N'
+                print("gps fail, too many message")
                 break
 
             # increment the attempt counter
@@ -145,7 +200,11 @@ while True:
                 continue
 
             # parse the line
-            msg = pynmea2.parse(line)
+            try:
+                msg = pynmea2.parse(line)
+            except Exception as e:
+                print('failed to understand message, skipping it: ', e)
+                continue
 
             # skip any message which is not a GGA/RMC since we only need those two types
             if type(msg) not in [pynmea2.GGA, pynmea2.RMC]:
@@ -161,31 +220,40 @@ while True:
             # todo: the indexing by int here is...a brittle solution
 
             # if we have the date/time, use that to sync the system to current
-            if hasattr(msg, "datestamp") and hasattr(msg, "timestamp"):
+            if (hasattr(msg, "datestamp") and hasattr(msg, "timestamp")
+                    and msg.datestamp not in [None, '', 0]
+                    and msg.timestamp not in [None, '', 0]):
                 py_date = datetime.combine(msg.datestamp, msg.timestamp)
                 ts = py_date.isoformat().replace('+00:00', 'Z')
 
                 if not time_set:
+                    # update system time and reset timer
                     os.system(f'date -u -s"{ts}"')
                     time_set = True
+                    script_start = datetime.now()
 
-            if hasattr(msg, "latitude"):
+            if hasattr(msg, "latitude") and msg.latitude not in [None, '', 0]:
                 gps_stats[0] = round(msg.latitude, 6)
-            if hasattr(msg, "longitude"):
+                lat = round(msg.latitude, 4)
+            if hasattr(msg, "longitude") and msg.longitude not in [None, '', 0]:
                 gps_stats[1] = round(msg.longitude, 6)
-            if hasattr(msg, "altitude"):
+                lon = round(msg.longitude, 4)
+            if hasattr(msg, "altitude") and msg.altitude not in [None, '', 0]:
                 gps_stats[2] = msg.altitude
-            if hasattr(msg, "num_sats"):
+            if hasattr(msg, "num_sats") and msg.num_sats not in [None, '', 0]:
                 gps_stats[3] = msg.num_sats
-            if hasattr(msg, "horizontal_dil"):
+                sat_count = int(msg.num_sats)
+            if hasattr(msg, "horizontal_dil") and msg.horizontal_dil not in [None, '', 0]:
                 gps_stats[4] = msg.horizontal_dil
-            if hasattr(msg, "gps_qual"):
+            if hasattr(msg, "gps_qual") and msg.gps_qual not in [None, '', 0]:
                 gps_stats[5] = msg.gps_qual
 
     except Exception as e:
         print('gps data failed: ', e)
         gps_stats = [None] * len(gps_headers)
         gps_serial.close()
+        time.sleep(0.1)
+        gps_state = 'N'
 
     try:
         # open the serial port if it's been lost/failed
@@ -200,6 +268,7 @@ while True:
         ca_stats = ca_serial.readline().decode().strip().split("\t")
         ## remove list item 5th item (index 4), "distance traveled"
         ca_stats.pop(4)
+        ca_state = 'Y'
 
         if len(ca_stats) != len(ca_headers):
             raise Exception(f"ca stat lengths don't match headers {len(ca_stats)} != {len(ca_headers)}")
@@ -208,6 +277,8 @@ while True:
         print('ca stats failed: ', e)
         ca_stats = [None] * len(ca_headers)
         ca_serial.close()
+        time.sleep(0.1)
+        ca_state = 'N'
 
     try:
         # set up the instrument
@@ -239,11 +310,15 @@ while True:
 
             # jam it all into the row data
             pr_stats.append(val)
+
+            pr_state = 'Y'
     except Exception as e:
         print("pr stats failed: ", e)
         pr_stats = [None] * len(pr_headers)
+        pr_state = 'N'
         if instrument is not None:
             instrument.serial.close()
+            time.sleep(0.1)
 
     # start the csvwriter if we have a date to use
     current_date = datetime.now(timezone.utc)
@@ -270,4 +345,4 @@ while True:
 
     # time.sleep() is basic, could probably be a bit more advanced here (by, like, trying to hit N records, per second
     # and accounting for the sleep time calculated by how long it's been since last...but....whatever :D)
-    time.sleep(0.001)
+    time.sleep(0.1)
