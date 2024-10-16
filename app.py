@@ -43,8 +43,8 @@ pr_serial = serial.Serial(None, baudrate=115200, timeout=0.5)
 ca_serial = serial.Serial(None, baudrate=9600, timeout=0.5)
 gps_serial = serial.Serial(None, baudrate=9600, timeout=0.5)
 
-pr_serial.port = os.getenv('pr_serial', '/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01LIUZ-if00-port0')
-ca_serial.port = os.getenv('ca_serial', '/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO01KYGI-if00-port0')
+pr_serial.port = os.getenv('pr_serial', '/dev/serial/by-id/find-pr-value-and-set-in-env')
+ca_serial.port = os.getenv('ca_serial', '/dev/serial/by-id/find-ca-value-and-set-in-env')
 gps_serial.port = os.getenv('gps_serial', '/dev/ttyACM0')
 speed_units = os.getenv('speed_units', 'km/h')
 
