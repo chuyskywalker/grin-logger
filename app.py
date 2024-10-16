@@ -140,7 +140,7 @@ while True:
             draw.text((0, 0), 'DUR: {:02}:{:02}'.format(int(minutes), int(seconds)), font=font, fill=255)
             draw.text((0, 16), f'SATS: {sat_count}', font=font, fill=255)
             draw.text((0, 32), f'GPS: {gps_state}  PR: {pr_state}  CA: {ca_state}', font=font, fill=255)
-            draw.text((0, 48), f'{round(lat, 4)}, {round(lon, 4)}', font=font, fill=255)
+            draw.text((0, 48), f'{lat}, {lon}', font=font, fill=255)
 
             oled.image(image)
             oled.show()
