@@ -134,6 +134,7 @@ time_set = False
 script_start = datetime.now()
 sat_count = lat = lon = "???"
 gps_state = pr_state = ca_state = 'N'
+record_count = 0
 
 while True:
 
@@ -145,7 +146,7 @@ while True:
 
             draw.rectangle((0, 0, oled.width, oled.height), outline=0, fill=0)
             draw.text((0, 0), 'DUR: {:02}:{:02}'.format(int(minutes), int(seconds)), font=font, fill=255)
-            draw.text((0, 16), f'SATS: {sat_count}', font=font, fill=255)
+            draw.text((0, 16), f'SAT: {sat_count}  LN: {record_count:,}', font=font, fill=255)
             draw.text((0, 32), f'GPS: {gps_state}  PR: {pr_state}  CA: {ca_state}', font=font, fill=255)
             draw.text((0, 48), f'{lat}, {lon}', font=font, fill=255)
 
@@ -366,6 +367,7 @@ while True:
     # send it out to the csvfile and flush it to disk
     csvwriter.writerow(compiled_stats)
     csvfile.flush()
+    record_count += 1
 
     # time.sleep() is basic, could probably be a bit more advanced here (by, like, trying to hit N records, per second
     # and accounting for the sleep time calculated by how long it's been since last...but....whatever :D)
