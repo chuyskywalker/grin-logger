@@ -247,12 +247,11 @@ while True:
                 gps_stats[1] = round(msg.longitude, 6)
                 lon = round(msg.longitude, 4)
             if hasattr(msg, "altitude") and msg.altitude not in [None, '', 0]:
-                gps_stats[2] = msg.altitude
+                gps_stats[2] = round(float(msg.altitude), 2)
             if hasattr(msg, "num_sats") and msg.num_sats not in [None, '', 0]:
-                gps_stats[3] = msg.num_sats
-                sat_count = int(msg.num_sats)
+                gps_stats[3] = sat_count = int(msg.num_sats)
             if hasattr(msg, "horizontal_dil") and msg.horizontal_dil not in [None, '', 0]:
-                gps_stats[4] = msg.horizontal_dil
+                gps_stats[4] = round(float(msg.horizontal_dil), 3)
             if hasattr(msg, "gps_qual") and msg.gps_qual not in [None, '', 0]:
                 gps_stats[5] = msg.gps_qual
 
@@ -273,13 +272,30 @@ while True:
         ca_serial.readline()
         # To "clean up" the data, we decode it from the raw data, strip off any whitespace,
         # and then split it by the (\t) tabs
-        ca_stats = ca_serial.readline().decode().strip().split("\t")
-        ## remove list item 5th item (index 4), "distance traveled"
-        ca_stats.pop(4)
+        ca_stats_raw = ca_serial.readline().decode().strip().split("\t")
         ca_state = 'Y'
 
-        if len(ca_stats) != len(ca_headers):
-            raise Exception(f"ca stat lengths don't match headers {len(ca_stats)} != {len(ca_headers)}")
+        # translate the raw stats into better types
+        ca_stats = [
+            round(float(ca_stats_raw[0]), 2),   # "Amp Hours (ah)",           '30.15',
+            round(float(ca_stats_raw[1]), 2),   # "Voltage (V)",              '77.59',
+            round(float(ca_stats_raw[2]), 2),   # "Amps (A)",                 '0.10',
+            round(float(ca_stats_raw[3]), 2),   # f'Speed ({speed_units})',   '0.00',
+            # ## skip distance; gps will have it via track points and it's another unknown value
+            # #round(float(ca_stats_raw[4]), 2),  # "Distance (km)",            '23.1',
+            round(float(ca_stats_raw[5]), 2),   # "Temp (°C)",                '20.5',
+            int(float(ca_stats_raw[6])),   # "Cadence (rpm)",            '0.0',
+            int(float(ca_stats_raw[7])),   # "Human Watts (W)",          '0',
+            round(float(ca_stats_raw[8]), 2),   # "Human Power (NM)",         '0.0',
+            round(float(ca_stats_raw[9]), 2),   # "Throttle In (V)",          '0.83',
+            round(float(ca_stats_raw[10]), 2),  # "Throttle Out (V)",         '1.15',
+            round(float(ca_stats_raw[11]), 2),  # "AuxA",                     '54.2',
+            round(float(ca_stats_raw[12]), 2),  # "AuxB",                     '20.0',
+            ca_stats_raw[13],                   # "Flags",                    '1w',
+        ]
+
+        # if len(ca_stats) != len(ca_headers):
+        #     raise Exception(f"ca stat lengths don't match headers {len(ca_stats)} != {len(ca_headers)}")
 
     except Exception as e:
         print('ca stats failed: ', e)
