@@ -213,12 +213,12 @@ while True:
                 print('failed to understand message, skipping it: ', e)
                 continue
 
+            # print(repr(msg))
+
             # skip any message which is not a GGA/RMC since we only need those two types
             if type(msg) not in [pynmea2.GGA, pynmea2.RMC]:
                 # print("skipped message (" + msg.__class__.__name__ + ") we don't need")
                 continue
-
-            # print(repr(msg))
 
             # collect whatever data we can from the messages
             # yes, RMC and GGA both have lat/long; we can take the values from either, they'll be the same
@@ -235,6 +235,7 @@ while True:
 
                 if not time_set:
                     # update system time and reset timer
+                    print(f'Got time from GPS, setting to: {ts}')
                     os.system(f'date -u -s"{ts}"')
                     time_set = True
                     script_start = datetime.now()
