@@ -25,7 +25,14 @@ BORDER = 5
 
 # Use for I2C.
 i2c = board.I2C()
-oled = adafruit_ssd1306.SSD1306_I2C(WIDTH, HEIGHT, i2c, addr=0x3C, reset=oled_reset)
+oled_ready = False
+while not oled_ready:
+    try:
+        oled = adafruit_ssd1306.SSD1306_I2C(WIDTH, HEIGHT, i2c, addr=0x3C, reset=oled_reset)
+        oled_ready = True
+    except:
+        print("Awaiting OLED ready...")
+        time.sleep(1)
 
 # Create blank image for drawing.
 # Make sure to create image with mode '1' for 1-bit color.
