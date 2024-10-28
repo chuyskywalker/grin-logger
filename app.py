@@ -163,17 +163,23 @@ while True:
         # - GGA
         # - RMC
         # The first message contains the majority of the lat/lon/etc data we want, meanwhile
-        # the RMC message critically contains the DATE object. We need this since we can't rely
+        # the RMC message critically contains the DATE and TIME info. We need this since we can't rely
         # on the rPi since it doesn't have an RTC with battery backup. Thus, when not connected
         # to your wifi (ie, out on a ride) you have no idea what the date/time is.
         #
         # With that in mind, this means we need to read multiple lines from the GPS serial connection
         # till we find at least one of each of the messages above so we can cobble together the full
         # timestamp (UTC based, ISO 8601 format)
+        #
+        # Every time we need the GGA, but we only need a valid RMC once to get & set the time.
 
-        # preset the stats as nones so we can test "if all are no long None, we're good!"
-        # also setup attempts so we don't spin our wheels here forever if the message queue gets wonky
+        # pre-populate an empty set of stats
         gps_stats = [None] * len(gps_headers)
+
+        # track gga_read so that if we see that message, we can exit the loop
+        gga_read = False
+
+        # only try SO many times
         attempts = 0
 
         # open the serial port if it's been lost/failed
@@ -185,15 +191,13 @@ while True:
 
         # loop read messages till we've fetched all our data
         while True:
-            # if we've got all the data, break the line reading loop
-            if not any(x is None for x in gps_stats):
-                gps_state = 'Y'
+
+            # if we have the GGA and the time is already set, we're done
+            if gga_read and time_set:
                 break
 
-            # also bust out if we've tried too many times, emptying the collected data
+            # also bust out if we've tried too many times
             if attempts >= 25:
-                gps_stats = [None] * len(gps_headers)
-                gps_state = 'N'
                 print("gps fail, too many message")
                 break
 
@@ -216,45 +220,42 @@ while True:
 
             # print(repr(msg))
 
-            # skip any message which is not a GGA/RMC since we only need those two types
-            if type(msg) not in [pynmea2.GGA, pynmea2.RMC]:
-                # print("skipped message (" + msg.__class__.__name__ + ") we don't need")
-                continue
+            # We only need the RMC message once to set the date/time
+            if type(msg) is pynmea2.RMC and not time_set:
+                if (hasattr(msg, "datestamp") and hasattr(msg, "timestamp")
+                        and msg.datestamp not in [None, '', 0]
+                        and msg.timestamp not in [None, '', 0]):
+                    py_date = datetime.combine(msg.datestamp, msg.timestamp)
+                    ts = py_date.isoformat().replace('+00:00', 'Z')
 
-            # collect whatever data we can from the messages
-            # yes, RMC and GGA both have lat/long; we can take the values from either, they'll be the same
-            # it's just different message types from years of caked on different vendor requirements
-            # each message type has a bit of the data we need, so we seek both.
-            # todo: the indexing by int here is...a brittle solution
-
-            # if we have the date/time, use that to sync the system to current
-            if (hasattr(msg, "datestamp") and hasattr(msg, "timestamp")
-                    and msg.datestamp not in [None, '', 0]
-                    and msg.timestamp not in [None, '', 0]):
-                py_date = datetime.combine(msg.datestamp, msg.timestamp)
-                ts = py_date.isoformat().replace('+00:00', 'Z')
-
-                if not time_set:
                     # update system time and reset timer
                     print(f'Got time from GPS, setting to: {ts}')
                     os.system(f'date -u -s"{ts}"')
                     time_set = True
                     script_start = datetime.now()
 
-            if hasattr(msg, "latitude") and msg.latitude not in [None, '', 0]:
-                gps_stats[0] = round(msg.latitude, 6)
-                lat = round(msg.latitude, 4)
-            if hasattr(msg, "longitude") and msg.longitude not in [None, '', 0]:
-                gps_stats[1] = round(msg.longitude, 6)
-                lon = round(msg.longitude, 4)
-            if hasattr(msg, "altitude") and msg.altitude not in [None, '', 0]:
-                gps_stats[2] = round(float(msg.altitude), 2)
-            if hasattr(msg, "num_sats") and msg.num_sats not in [None, '', 0]:
-                gps_stats[3] = sat_count = int(msg.num_sats)
-            if hasattr(msg, "horizontal_dil") and msg.horizontal_dil not in [None, '', 0]:
-                gps_stats[4] = round(float(msg.horizontal_dil), 3)
-            if hasattr(msg, "gps_qual") and msg.gps_qual not in [None, '', 0]:
-                gps_stats[5] = msg.gps_qual
+            # otherwise the message we really need is GGA for lat/lon/sats/etc
+            elif type(msg) is pynmea2.GGA:
+                gga_read = True
+                if hasattr(msg, "latitude") and msg.latitude not in [None, '', 0]:
+                    gps_stats[0] = round(msg.latitude, 6)
+                    lat = round(msg.latitude, 4)
+                if hasattr(msg, "longitude") and msg.longitude not in [None, '', 0]:
+                    gps_stats[1] = round(msg.longitude, 6)
+                    lon = round(msg.longitude, 4)
+                if hasattr(msg, "altitude") and msg.altitude not in [None, '', 0]:
+                    gps_stats[2] = round(float(msg.altitude), 2)
+                if hasattr(msg, "num_sats") and msg.num_sats not in [None, '', 0]:
+                    gps_stats[3] = sat_count = int(msg.num_sats)
+                if hasattr(msg, "horizontal_dil") and msg.horizontal_dil not in [None, '', 0]:
+                    gps_stats[4] = round(float(msg.horizontal_dil), 3)
+                if hasattr(msg, "gps_qual") and msg.gps_qual not in [None, '', 0]:
+                    gps_stats[5] = msg.gps_qual
+
+            # every other message is just noise to us
+            else:
+                # print("skipped message (" + msg.__class__.__name__ + ") we don't need")
+                continue
 
     except Exception as e:
         print('gps data failed: ', e)
@@ -262,6 +263,16 @@ while True:
         gps_serial.close()
         time.sleep(0.1)
         gps_state = 'N'
+
+    # once out of the loop; maybe we read a GGA message, but it was bunk
+    # or something else has gone wrong to miss some data. Instead of logging halfway, just dump this one
+
+    if any(x is None for x in gps_stats):
+        print('GPS data incomplete; invalidating', gps_stats)
+        gps_stats = [None] * len(gps_headers)
+        gps_state = 'N'
+    else:
+        gps_state = 'Y'
 
     try:
         # open the serial port if it's been lost/failed
