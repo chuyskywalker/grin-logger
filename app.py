@@ -306,8 +306,8 @@ while True:
             ca_stats_raw[13],                   # "Flags",                    '1w',
         ]
 
-        # if len(ca_stats) != len(ca_headers):
-        #     raise Exception(f"ca stat lengths don't match headers {len(ca_stats)} != {len(ca_headers)}")
+        if len(ca_stats) != len(ca_headers):
+            raise Exception(f"ca stat lengths don't match headers {len(ca_stats)} != {len(ca_headers)}")
 
     except Exception as e:
         print('ca stats failed: ', e)
